@@ -144,7 +144,14 @@ def generate_henon(n_points=500, a=1.4, b=0.3, x0=0.0, y0=0.0):
     for n in range(n_points - 1):
         x[n+1] = y[n] + 1.0 - a * x[n]**2
         y[n+1] = b * x[n]
-    return pd.DataFrame({'n': np.arange(n_points), 'x': x, 'y': y})
+        # Détection de divergence : la série s'échappe vers l'infini
+        if not (np.isfinite(x[n+1]) and np.isfinite(y[n+1])):
+            return None  # série divergée
+    df = pd.DataFrame({'n': np.arange(n_points), 'x': x, 'y': y})
+    # Vérification globale (NaN via conditions initiales)
+    if not (np.all(np.isfinite(df['x'])) and np.all(np.isfinite(df['y']))):
+        return None
+    return df
 
 
 # ── Jeu de données supervisé ──────────────────────────────────
@@ -159,6 +166,11 @@ def create_supervised(series, window_size=10, horizon=1):
 def prepare_dataset(series, window_size=10, horizon=1, test_size=0.2):
     from sklearn.preprocessing import MinMaxScaler
     X, y = create_supervised(series, window_size, horizon)
+    # Garde de sécurité : supprimer les lignes avec inf/NaN
+    finite_mask = np.all(np.isfinite(X), axis=1) & np.isfinite(y)
+    X, y = X[finite_mask], y[finite_mask]
+    if len(X) == 0:
+        raise ValueError("La série contient trop de valeurs non finies pour construire un dataset.")
     scX = MinMaxScaler((-1, 1)); scy = MinMaxScaler((-1, 1))
     Xs = scX.fit_transform(X)
     ys = scy.fit_transform(y.reshape(-1, 1)).ravel()
@@ -276,7 +288,13 @@ def fig_predictions(y_true, y_pred, h, metrics, n_show=100):
 
 def fig_all_horizons(all_results, n_show=80):
     horizons = sorted(all_results.keys())
-    fig, axes = plt.subplots(2, 2, figsize=(15, 9))
+    n_h = len(horizons)
+    # Adapt grid: 1 row if ≤2 horizons, else 2×2
+    if n_h <= 2:
+        nrows, ncols = 1, max(n_h, 1)
+    else:
+        nrows, ncols = 2, 2
+    fig, axes = plt.subplots(nrows, ncols, figsize=(15, 9), squeeze=False)
     axes = axes.ravel()
     fig.suptitle("Comparaison multi-horizons — MLP / Série de Hénon",
                  fontsize=12, fontweight='bold')
@@ -294,6 +312,9 @@ def fig_all_horizons(all_results, n_show=80):
         ax.set_title(f"h={h} pas  |  RMSE={m['RMSE']:.5f}  R²={m['R2']:.5f}", fontsize=9)
         ax.set_xlabel("Indice"); ax.set_ylabel("x(n)")
         ax.legend(fontsize=7)
+    # Hide unused subplots
+    for j in range(n_h, len(axes)):
+        axes[j].set_visible(False)
     fig.tight_layout(rect=[0,0,1,0.95])
     return fig
 
@@ -315,7 +336,8 @@ def fig_metrics_bars(metrics_df):
 
 def fig_residuals_hist(all_results):
     horizons = sorted(all_results.keys())
-    fig, axes = plt.subplots(1, len(horizons), figsize=(13, 4))
+    fig, axes = plt.subplots(1, len(horizons), figsize=(13, 4), squeeze=False)
+    axes = axes.ravel()
     fig.suptitle("Distribution des résidus par horizon", fontweight='bold', fontsize=11)
     for ax, h in zip(axes, horizons):
         resid = all_results[h]['y_true'] - all_results[h]['y_pred']
@@ -402,7 +424,19 @@ if run_btn:
     # ── Génération de la série ────────────────────────────
     with st.spinner("Génération de la série de Hénon..."):
         df = generate_henon(n_points, a_param, b_param)
-        st.session_state['henon_df'] = df
+
+    if df is None:
+        st.error(
+            f"⚠️ **Série divergée** : avec a={a_param:.2f} et b={b_param:.2f}, "
+            "la carte de Hénon s'échappe vers l'infini (bassin d'attraction dépassé).\n\n"
+            "**Solutions** :\n"
+            "- Utilisez **a = 1.4** et **b = 0.3** (paramètres standards)\n"
+            "- Réduisez la valeur de **a** (la divergence survient typiquement pour a > 1.56)\n"
+            "- Maintenez **b ∈ [0.1, 0.4]** pour rester dans le bassin chaotique"
+        )
+        st.stop()
+
+    st.session_state['henon_df'] = df
 
     # ── Entraînement par horizon ──────────────────────────
     all_results  = {}

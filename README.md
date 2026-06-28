@@ -1,6 +1,7 @@
 # 🧠 RNA Multicouches — Série de Hénon
 ## Interface Streamlit · ISP Madagascar · Juin 2026
-### Filières : ESIIA4 | IGGLIA4 | IMTICIA4 | ISAIA4
+
+### Étudiant : SANTATRINIAINA Feno Nasandratra — N° 57 · Classe : IIGLIA4
 
 ---
 
@@ -65,7 +66,7 @@ py main.py
 
 
 ```bash
-streamlit run app.py
+py -m streamlit run app.py
 ```
 
 Ouvrez votre navigateur sur **http://localhost:8501**
@@ -116,4 +117,3 @@ x₀ = 0, y₀ = 0
 
 ---
 
-*Bon travail — Institut Supérieur Polytechnique de Madagascar, Juin 2026*
